@@ -1,22 +1,20 @@
 package database
 
 import (
+	"sync"
+	"os"
 	"encoding/json"
 	"errors"
-	"os"
-	"sync"
 )
-
+var ErrNotExist = errors.New("resource does not exist")
 type DB struct {
 	path string
 	mu   *sync.RWMutex
 }
 type DBStructure struct {
 	Chirps map[int]Chirp `json:"chirps"`
-}
-type Chirp struct {
-	ID   int    `json:"id"`
-	Body string `json:"body"`
+	Users map[int]User `json:"users"`
+	Revocations map[string]Revocation `json:"revocations"`
 }
 
 func NewDB(path string) (*DB, error) {
@@ -27,6 +25,14 @@ func NewDB(path string) (*DB, error) {
 	err := db.ensureDB()
 	return db, err
 }
+func (db *DB) ResetDB() error {
+	err := os.Remove(db.path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return db.ensureDB()
+}
+
 func (db *DB) WriteDB(dbStructure DBStructure) error {
 	db.mu.Lock()
 	defer db.mu.Unlock()
@@ -40,6 +46,7 @@ func (db *DB) WriteDB(dbStructure DBStructure) error {
 	}
 	return nil
 }
+
 func (db *DB) loadDB() (DBStructure, error) {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
@@ -54,59 +61,18 @@ func (db *DB) loadDB() (DBStructure, error) {
 	}
 	return dbStructure, nil
 }
-
 func (db *DB) createDB() error {
 	dbStructure := DBStructure{
 		Chirps: map[int]Chirp{},
+		Users: map[int]User{},
 	}
 	return db.WriteDB(dbStructure)
 }
+
 func (db *DB) ensureDB() error {
 	_, err := os.ReadFile(db.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return db.createDB()
 	}
 	return err
-}
-func (db *DB) CreateChirp(body string) (Chirp, error) {
-	dbStructure, err := db.loadDB()
-	if err != nil {
-		return Chirp{}, err
-	}
-	id := len(dbStructure.Chirps) + 1
-	chirp := Chirp{
-		ID:   id,
-		Body: body,
-	}
-	dbStructure.Chirps[id] = chirp
-	err = db.WriteDB(dbStructure)
-	if err != nil {
-		return Chirp{}, err
-	}
-	return chirp, nil
-}
-func (db *DB) GetChirps() ([]Chirp, error) {
-	dbStructure, err := db.loadDB()
-	if err != nil {
-		return nil, err
-	}
-
-	chirps := make([]Chirp, 0, len(dbStructure.Chirps))
-	for _, chirp := range dbStructure.Chirps {
-		chirps = append(chirps, chirp)
-	}
-
-	return chirps, nil
-}
-func (db *DB) GetChirpID(id int) (Chirp, error){
-	dbStructure, err := db.loadDB()
-	if err != nil{
-		return Chirp{}, err
-	}
-	for k, v := range dbStructure.Chirps{
-		if k== id{
-			return v, nil
-		}
-	}
-	return Chirp{}, errors.New("ChipID not found")
 }

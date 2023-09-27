@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
-
+    "github.com/charlesozo/chirpy/internal/auth"
 )
 type Chirp struct{
+	AuthorID int `json:"author_id"`
 	Body string `json:"body"`
 	ID   int    `json:"id"`
 }
@@ -27,12 +29,30 @@ func (cfg *apiConfig) handlerChirpsCreate(w http.ResponseWriter, r *http.Request
 		respondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	chirp, err := cfg.DB.CreateChirp(cleaned)
+
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil{
+		respondWithError(w, http.StatusUnauthorized, "Couldn't get JWT")
+		return
+	}
+	authorID, err := auth.ValidateJWT(token, cfg.jwtsecret)
+	if err!=nil{
+		respondWithError(w, http.StatusInternalServerError, "Unable to validate JWT")
+		return
+	}
+	authorIDint, err := strconv.Atoi(authorID)
+	if err!=nil{
+		respondWithError(w, http.StatusInternalServerError, "String Invalid")
+		return
+	}
+
+	chirp, err := cfg.DB.CreateChirp(cleaned, authorIDint)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't create chirp")
 		return
 	}
 	respondWithJSON(w, http.StatusCreated, Chirp{
+		AuthorID: authorIDint,
 		Body: chirp.Body,
 		ID:   chirp.ID,
 	})
